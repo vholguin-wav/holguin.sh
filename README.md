@@ -1,38 +1,13 @@
 # holguin.sh
 
-```text
- _   _           _             
-| | | |         | |            
-| | | |_ __   __| | ___ _ __   
-| | | | '_ \ / _` |/ _ \ '__|  
-| |_| | | | | (_| |  __/ |     
- \___/|_| |_|\__,_|\___|_|     
-                               
-  ____                _                   _   _             
- / ___|              | |                 | | (_)            
-| |     ___  _ __ ___| |_ _ __ _   _  ___| |_ _  ___  _ __  
-| |    / _ \| '_ \/ __| __| '__| | | |/ __| __| |/ _ \| '_ \
-| |___| (_) | | | \__ \ |_| |  | |_| | (__| |_| | (_) | | | |
- \____|\___/|_| |_|___/\__|_|   \__,_|\___|\__|_|\___/|_| |_|
+Personal website and portfolio.
 
+## Architecture
+* **Editors:** [Zed](https://zed.dev/) & [CotEditor](https://coteditor.com/)
+* **Formatting:** [Prettier](https://prettier.io/) for structural syntax
+* **Validation:** 100% compliant with the [W3C Nu HTML Checker](https://validator.w3.org/nu/)
+* **Standards:** Aligned with [Google HTML/CSS Style Guide](https://google.github.io/styleguide/htmlcssguide.html)
+* **AI Assistance:** Google Gemini (HTML/CSS structural pair programming)
 
-                        (       )
-                          (      )
-                           (     )
-                            (    )
-                             (   )
-                              (  )
-          _____________         _
-          | |     | |          | |
-          | |     | |          | |
-          | |     | |__________|_|___________
-        __|  -----         _____________     \
-       /  |               |   ________  |    |
-       \__|  Cat6         |__|_______|__|    |             _
-          |__________________________________|            //
-          _______________________________ ______________ //
-         / _    ____________________   _  \ ____________||
-        | (_)  |____________________| (_)  |             \\
-         \_______________________________ /               \\
--------------------------------------------------------------------
-```
+## Contact
+[vince@holguin.sh](mailto:vince@holguin.sh)

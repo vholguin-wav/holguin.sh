@@ -1,0 +1,222 @@
+:root {
+  --accent: #58a6ff;
+  --bg: #0d1117;
+  --border: #30363d;
+  --card-bg: #161b22;
+  --green: #7ee787;
+  --muted: #8b949e;
+  --prompt: #ec775c;
+  --text: #c9d1d9;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  display: flex;
+  font-family:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
+  font-size: 14px;
+  justify-content: center;
+  line-height: 1.6;
+  padding: 2.5rem 1rem;
+}
+
+.container {
+  max-width: 780px;
+  width: 100%;
+}
+
+/* Static ASCII Header */
+.main-banner {
+  color: var(--accent);
+  font-size: 11px;
+  line-height: 1.15;
+  margin-bottom: 2rem;
+  overflow-x: auto;
+  user-select: none;
+}
+
+/* Navigation */
+nav {
+  border-bottom: 1px dashed var(--border);
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 2.5rem;
+  padding-bottom: 1rem;
+}
+nav a {
+  color: var(--text);
+  text-decoration: none;
+  transition: color .15s ease;
+}
+nav a:hover {
+  color: var(--accent);
+}
+nav a::before {
+  color: var(--muted);
+  content: "./";
+}
+nav a.active {
+  color: var(--green);
+  font-weight: 700;
+}
+
+/* Sections */
+h1 {
+  color: var(--accent);
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.3;
+  margin-bottom: 1rem;
+}
+
+h1::before {
+  color: var(--muted);
+  content: "# ";
+}
+
+h2 {
+  color: var(--green);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-bottom: .75rem;
+  margin-top: 1.75rem;
+}
+
+h2::before {
+  color: var(--muted);
+  content: "$ ";
+}
+
+h3 {
+  color: var(--text);
+  font-size: .9rem;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-bottom: .5rem;
+  margin-top: 1.25rem;
+}
+
+h3::before {
+  color: var(--muted);
+  content: "> ";
+}
+p {
+  color: var(--text);
+  margin-bottom: .5rem;
+}
+
+.placeholder-box {
+  background: var(--card-bg);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-style: italic;
+  padding: 1rem 1.25rem;
+}
+
+/* Footer / Prompt */
+footer {
+  border-top: 1px dashed var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+  margin-top: 3.5rem;
+  padding-top: 1.5rem;
+}
+.prompt-footer {
+  color: var(--muted);
+  font-size: 13px;
+}
+.prompt-footer .user {
+  color: var(--green);
+}
+.prompt-footer .at {
+  color: var(--muted);
+}
+.prompt-footer .host {
+  color: var(--accent);
+}
+.prompt-footer .path {
+  color: var(--prompt);
+}
+.prompt-footer .command-link {
+  border-bottom: 1px dotted var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+.prompt-footer .command-link:hover {
+  border-bottom-color: var(--green);
+  color: var(--green);
+}
+
+.cursor {
+  animation: blink 1s infinite;
+  background: var(--text);
+  display: inline-block;
+  height: 13px;
+  margin-left: 2px;
+  vertical-align: middle;
+  width: 7px;
+}
+@keyframes blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.meta-bar {
+  color: var(--muted);
+  display: flex;
+  font-size: 11px;
+  justify-content: space-between;
+}
+.meta-bar a {
+  color: var(--muted);
+  text-decoration: none;
+}
+.meta-bar a:hover {
+  color: var(--accent);
+}
+
+/* For hiding headers or sections */
+.visually-hidden {
+  border: 0;
+  clip: rect(0 0 0 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+/* Splash */
+.splash-container {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  margin: 2rem 0;
+  min-height: 150px;
+}
+#splash-content {
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1.2;
+}
