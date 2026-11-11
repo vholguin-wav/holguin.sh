@@ -61,7 +61,7 @@ nav a:hover {
 }
 nav a::before {
   color: var(--muted);
-  content: "./";
+  content: "/";
 }
 nav a.active {
   color: var(--green);
@@ -219,4 +219,136 @@ footer {
   color: var(--muted);
   font-size: 1rem;
   line-height: 1.2;
+}
+
+/* Project Writeups & Long-Form Content */
+main a {
+  border-bottom: 1px dotted var(--accent);
+  color: var(--accent);
+  text-decoration: none;
+}
+main a:hover {
+  border-bottom-color: var(--green);
+  color: var(--green);
+}
+
+nav a.back-link::before {
+  content: "$ ";
+}
+
+hr {
+  border: 0;
+  border-top: 1px dashed var(--border);
+  margin: 2rem 0;
+}
+
+ul,
+ol {
+  margin-bottom: 1rem;
+  padding-left: 1.5rem;
+}
+
+li {
+  margin-bottom: .35rem;
+}
+
+li > ul,
+li > ol {
+  margin-bottom: .25rem;
+  margin-top: .25rem;
+}
+
+code {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--green);
+  font-size: .85em;
+  padding: .1rem .35rem;
+}
+
+.code-block {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin: 1rem 0;
+  overflow-x: auto;
+  padding: 1rem;
+}
+
+.code-block code {
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  padding: 0;
+}
+
+/* Table of Contents */
+.toc {
+  background-color: var(--card-bg);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  display: block;
+  margin-bottom: 2rem;
+  padding: 1rem 1.25rem;
+}
+.toc a::before {
+  content: none;
+}
+.toc-title {
+  color: var(--green);
+  font-weight: 700;
+  margin-bottom: .5rem;
+}
+.toc-title::before {
+  color: var(--muted);
+  content: "$ ";
+}
+
+/* Figures & Screenshots */
+figure {
+  margin: 1.5rem 0;
+  text-align: center;
+}
+
+figure img {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: block;
+  height: auto;
+  margin: 0 auto;
+  max-width: 100%;
+}
+
+figcaption {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: italic;
+  margin-top: .5rem;
+}
+
+/* Tables */
+.table-wrapper {
+  margin: 1rem 0 1.5rem;
+  overflow-x: auto;
+}
+
+table {
+  border-collapse: collapse;
+  font-size: 13px;
+  width: 100%;
+}
+
+th,
+td {
+  border: 1px solid var(--border);
+  padding: .5rem .75rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background-color: var(--card-bg);
+  color: var(--accent);
+  font-weight: 700;
 }

@@ -11,3 +11,6 @@ Personal website and portfolio.
 
 ## Contact
 [vince@holguin.sh](mailto:vince@holguin.sh)
+
+## License
+This project is open source and available under the [GNU General Public License v3.0](LICENSE).
