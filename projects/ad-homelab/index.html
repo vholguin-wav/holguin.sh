@@ -1,0 +1,1076 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ad-homelab - holguin.sh</title>
+    <link rel="stylesheet" href="../../style.css">
+  </head>
+  <body>
+    <div class="container">
+      <nav>
+        <a class="back-link" href="../../projects.html">cd ..</a>
+      </nav>
+
+      <main id="ad-homelab">
+        <h1>ad-homelab</h1>
+
+        <nav class="toc" aria-label="Table of contents">
+          <p class="toc-title">cat toc.txt</p>
+          <ul>
+            <li><a href="#section-0">0. tl;dr</a></li>
+            <li>
+              <a href="#section-1">1. Introduction &amp; Network Topology</a>
+              <ul>
+                <li><a href="#physical-virtual-arch">physical &amp; virtual architecture</a></li>
+                <li><a href="#network-subnet-ref">network subnet reference</a></li>
+              </ul>
+            </li>
+            <li>
+              <a href="#section-2">2. Virtual Networking &amp; Firewall Setup (Proxmox &amp; pfSense)</a>
+              <ul>
+                <li><a href="#proxmox-switch-config">proxmox virtual switch configuration</a></li>
+                <li><a href="#provisioning-pfsense">provisioning pfSense (LBS-PFS-01)</a></li>
+                <li><a href="#console-interface-routing">console interface assignment &amp; subnet routing</a></li>
+                <li><a href="#web-gui-config">web gui configuration &amp; interface customization</a></li>
+                <li><a href="#firewall-rules-users">firewall rules for USERS interface</a></li>
+              </ul>
+            </li>
+            <li>
+              <a href="#section-3">3. Active Directory &amp; Identity and Access Management</a>
+              <ul>
+                <li><a href="#deploying-winserv">deploying windows server 2022 (LBS-DC-01)</a></li>
+                <li><a href="#static-ip-verification">static ip assignment &amp; connectivity verification</a></li>
+                <li><a href="#adds-forest-promotion">AD DS forest promotion &amp; dns self resolution</a></li>
+                <li><a href="#aduc-ou-hierarchy">ADUC organizational unit hierarchy &amp; user provisioning</a></li>
+              </ul>
+            </li>
+            <li>
+              <a href="#section-4">4. Endpoints &amp; Domain Integration</a>
+              <ul>
+                <li><a href="#linux-jump-box">linux jump box deployment &amp; domain join (LBS-JMP-01)</a></li>
+                <li><a href="#win11-deployment">windows 11 enterprise workstation deployment (LBS-USR-01)</a></li>
+                <li><a href="#privilege-separation">privilege separation verification</a></li>
+              </ul>
+            </li>
+            <li>
+              <a href="#section-5">5. Key Troubleshooting Scenarios &amp; Lessons Learned</a>
+              <ul>
+                <li><a href="#scenario-1">scenario 1: linux jump box gateway loss &amp; DNS resolver flapping</a></li>
+                <li><a href="#scenario-2">scenario 2: inter-subnet ICMP &amp; DNS timeout drops by windows defender firewall</a></li>
+                <li><a href="#key-takeaways">key takeaways</a></li>
+                <li><a href="#resources">resources</a></li>
+              </ul>
+            </li>
+          </ul>
+        </nav>
+
+        <section id="section-0">
+          <h2>0. tl;dr</h2>
+          <p>
+            This project was started mainly to familiarize myself with some core
+            system administration, networking and security concepts. Having
+            little exposure to Active Directory at work, I figured the best way
+            to learn about it was to set it up, break it, and fix it. Some
+            things that I learned during this process include:
+          </p>
+          <ul>
+            <li>
+              <strong>Hypervisor Virtualization:</strong> Installed Proxmox VE
+              9.1 on a MFF Dell OptiPlex, configured virtual networking,
+              provisioned virtual machines and appliances, and managed
+              virtualized hosting of a simulated 'enterprise' network.
+            </li>
+            <li>
+              <strong>Virtual Networking</strong>: Configured four Proxmox Linux
+              bridges (<code>vmbr0</code>–<code>vmbr3</code>) to logically
+              isolate network segments into dedicated Layer 2 broadcast domains
+              without the need for physical switches.
+            </li>
+            <li>
+              <strong>Router &amp; Firewall Deployment</strong>: Provisioned a
+              pfSense 2.8.1 virtual appliance (<code>LBS-PFS-01</code>), mapped
+              four VirtIO interfaces, defined gateway IPs, configured DHCP
+              pools, and built stateful firewall rules to enforce inter-subnet
+              access control.
+            </li>
+            <li>
+              <strong>Identity Management</strong>: Deployed Windows Server 2022
+              (<code>LBS-DC-01</code>) using VirtIO SCSI drivers, configured
+              static IP, promoted the root Active Directory forest to domain
+              controller, verified DNS self-resolution, and created a structured
+              Organizational Unit (OU) tree.
+            </li>
+            <li>
+              <strong>Endpoint Domain Joining</strong>: Joined a Linux
+              workstation (<code>LBS-JMP-01</code> on Debian 13) to Active
+              Directory using <code>realmd</code>, <code>sssd</code>, and
+              <code>pam_mkhomedir</code>, and joined three Windows 11 Enterprise
+              workstations (<code>LBS-USR-01/02/03</code>).
+            </li>
+            <li>
+              <strong>Inter-Subnet Troubleshooting</strong>: Diagnosed and
+              resolved missing default route and DNS resolver flapping issues on
+              Linux using <code>ip route</code>, and resolved inter-subnet
+              ICMP/DNS drops by adjusting Windows Defender Firewall remote IP
+              scope rules.
+            </li>
+          </ul>
+          <p>
+            The fictional 'enterprise' was named 'Labrador Solutions', hence the
+            Proxmox node being named <code>labrador</code>. What they solve, I
+            still haven't figured out yet. I got a little carried away in my
+            initial planning of users, OUs, and fictional roles for the
+            'employees' of this company, but only two ended up making the cut,
+            the Technology Director Barry Unger and the CEO Cynthia Guzman
+            (post-A.I.M. careers). Scope creep took over a lot during planning,
+            but I finally settled on developing a solid base I can use for
+            future labbing purposes. There is still a lot I want to do with this
+            environment, and I hope to provide future writeups expanding on
+            those developments as they happen.
+          </p>
+        </section>
+
+        <hr>
+
+        <section id="section-1">
+          <h2>1. Introduction &amp; Network Topology</h2>
+          <figure>
+            <img src="img/0-Topology.png" alt="Network topology showing the self contained Proxmox environment, segmented VLANs, and upstream/WAN connections">
+            <figcaption>
+              (Network topology showing the self contained Proxmox environment,
+              segmented VLANs, and upstream/WAN connections)
+            </figcaption>
+          </figure>
+
+          <h3 id="physical-virtual-arch">physical &amp; virtual architecture</h3>
+          <p>
+            The lab runs on a rather affordable MFF Dell OptiPlex 7080 powered
+            by an Intel Core i7 processor and 16 GB RAM running Proxmox VE 9.1.
+            pfSense acts as the core gateway router, bridging the internal subnets
+            to my physical home LAN while maintaining isolation between subnets and
+            enforcing firewall rules.
+          </p>
+          <figure>
+            <img src="img/1-Network-Bridge-Creation.png" alt="Proxmox VE System > Network interface showing Linux bridges vmbr0, vmbr1, vmbr2, and vmbr3 configured for Layer 2 network segregation." loading="lazy">
+            <figcaption>
+              (Proxmox VE System &gt; Network interface showing Linux bridges
+              vmbr0, vmbr1, vmbr2, and vmbr3 configured for Layer 2 network
+              segregation.)
+            </figcaption>
+          </figure>
+
+          <h3 id="network-subnet-ref">network subnet reference</h3>
+          <p>
+            The network is segmented into three primary internal subnets
+            alongside the physical WAN connection:
+          </p>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Subnet Name</th>
+                  <th>VLAN / ID</th>
+                  <th>Network CIDR</th>
+                  <th>Gateway IP</th>
+                  <th>Dedicated Purpose &amp; Assigned Hosts</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>MANAGEMENT</strong></td>
+                  <td>VLAN 10</td>
+                  <td><code>10.10.10.0/24</code></td>
+                  <td><code>10.10.10.1</code></td>
+                  <td>Administration subnet (<code>LBS-JMP-01</code>).</td>
+                </tr>
+                <tr>
+                  <td><strong>SERVERS</strong></td>
+                  <td>VLAN 20</td>
+                  <td><code>10.20.20.0/24</code></td>
+                  <td><code>10.20.20.1</code></td>
+                  <td>
+                    Server infrastructure holding identity core and DNS
+                    (<code>LBS-DC-01</code>).
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>USERS</strong></td>
+                  <td>VLAN 30</td>
+                  <td><code>10.30.30.0/24</code></td>
+                  <td><code>10.30.30.1</code></td>
+                  <td>End-user workstations (<code>LBS-USR-01/02/03</code>).</td>
+                </tr>
+                <tr>
+                  <td><strong>WAN</strong></td>
+                  <td>Uplink</td>
+                  <td><code>192.168.0.0/24</code></td>
+                  <td><code>192.168.0.1</code></td>
+                  <td>
+                    Upstream physical network connection leased from router
+                    (<code>192.168.0.163</code>). Local Proxmox host
+                    (<code>192.168.0.100</code>).
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <hr>
+
+        <section id="section-2">
+          <h2>2. Virtual Networking &amp; Firewall Setup (Proxmox &amp; pfSense)</h2>
+          <p>
+            To achieve network isolation on a single physical hypervisor, I
+            configured Proxmox Linux bridges and deployed a pfSense firewall VM
+            to handle Layer 3 routing and stateful filtering. pfSense here
+            serves a dual purpose as the core router as well as our firewall.
+            This step would look a lot different in a real enterprise, such as
+            separate VLANs for wireless APs, OT appliances and IoT devices.
+            Several physical and architectural decisions are also missing due to
+            self hosting on a single device, chiefly physical cable runs,
+            MDF/IDF/access switch location consideration, and tiered network
+            topology requiring VLAN trunking and access ports. As the primary
+            purpose of this homelab was high-level network segmentation and
+            Active Directory familiarization, these concerns are not fully
+            addressed in this writeup, but I do plan on implementing more
+            enterprise-level best practices in the future.
+          </p>
+
+          <h3 id="proxmox-switch-config">proxmox virtual switch configuration</h3>
+          <p>
+            In Proxmox VE under <code>labrador &gt; System &gt; Network</code>,
+            I created four virtual Linux bridges to serve as virtual switches:
+          </p>
+          <ul>
+            <li>
+              <code>vmbr0</code>: Bound to physical NIC (<code>nic0</code>),
+              handling external WAN traffic.
+            </li>
+            <li>
+              <code>vmbr1</code>: Internal bridge dedicated to the Management
+              subnet (<code>10.10.10.0/24</code>).
+            </li>
+            <li>
+              <code>vmbr2</code>: Internal bridge dedicated to the Server subnet
+              (<code>10.20.20.0/24</code>).
+            </li>
+            <li>
+              <code>vmbr3</code>: Internal bridge dedicated to the User subnet
+              (<code>10.30.30.0/24</code>).
+            </li>
+          </ul>
+
+          <h3 id="provisioning-pfsense">provisioning pfSense (<code>LBS-PFS-01</code>)</h3>
+          <p>
+            I provisioned the pfSense virtual machine <code>LBS-PFS-01</code>
+            (<code>VM ID 101</code>) with 2 vCPUs (set to <code>host
+            passthrough</code> for optional AES-NI crypto acceleration), 2 GB RAM, a 32
+            GB VirtIO disk, and <code>q35</code> machine type.
+          </p>
+          <p>
+            To connect our new pfSense core to all subnets, I attached four
+            VirtIO network interfaces under VM Hardware:
+          </p>
+          <ul>
+            <li><code>net0</code> -&gt; <code>vmbr0</code> (WAN)</li>
+            <li><code>net1</code> -&gt; <code>vmbr1</code> (Management)</li>
+            <li><code>net2</code> -&gt; <code>vmbr2</code> (Servers)</li>
+            <li><code>net3</code> -&gt; <code>vmbr3</code> (Users)</li>
+          </ul>
+          <figure>
+            <img src="img/2-pfSense-VM-Creation.png" alt="Proxmox VE wizard creating pfSense VM LBS-PFS-01 with 2 vCPUs, 2GB RAM, host CPU passthrough, and q35 machine model." loading="lazy">
+            <figcaption>
+              (Proxmox VE wizard creating pfSense VM LBS-PFS-01 with 2 vCPUs,
+              2GB RAM, host CPU passthrough, and q35 machine model.)
+            </figcaption>
+          </figure>
+
+          <h3 id="console-interface-routing">console interface assignment &amp; subnet routing</h3>
+          <p>
+            I attached and then booted my VM from the
+            <code>pfSense CE 2.8.1</code> ISO, following the installation wizard
+            and configuring the first interface. Subsequent interfaces could not
+            be added until installation was complete, so I created my Management
+            VLAN (VLAN 10) first.
+          </p>
+          <figure>
+            <img src="img/3-pfSense-Install-vtnet1.png" alt="pfSense console setup wizard configuring the LAN interface vtnet1 with IP 10.10.10.1/24 and enabling DHCP scope 10.10.10.100-199." loading="lazy">
+            <figcaption>
+              (pfSense console setup wizard configuring the LAN interface vtnet1
+              with IP 10.10.10.1/24 and enabling DHCP scope 10.10.10.100-199.)
+            </figcaption>
+          </figure>
+          <figure>
+            <img src="img/4-pfSense-Install-Status.png" alt="Console log output during pfSense 2.8.1 installer execution on Proxmox VE." loading="lazy">
+            <figcaption>
+              (Console log output during pfSense 2.8.1 installer execution on
+              Proxmox VE.)
+            </figcaption>
+          </figure>
+          <p>
+            Once installation was complete and my VM had rebooted, I assigned
+            interface mappings via console Option <code>1</code>:
+          </p>
+          <ul>
+            <li>
+              <code>WAN</code> -&gt; <code>vtnet0</code>
+              (<code>192.168.0.163/24</code> via DHCP)
+            </li>
+            <li>
+              <code>LAN</code> -&gt; <code>vtnet1</code>
+              (<code>10.10.10.1/24</code>)
+            </li>
+            <li>
+              <code>OPT1</code> -&gt; <code>vtnet2</code>
+              (<code>10.20.20.1/24</code>)
+            </li>
+            <li>
+              <code>OPT2</code> -&gt; <code>vtnet3</code>
+              (<code>10.30.30.1/24</code>)
+            </li>
+          </ul>
+          <figure>
+            <img src="img/5-pfSense-Menu.png" alt="pfSense initial console menu displaying WAN interface vtnet0 and LAN interface vtnet1 IP configuration." loading="lazy">
+            <figcaption>
+              (pfSense initial console menu displaying WAN interface vtnet0 and
+              LAN interface vtnet1 IP configuration.)
+            </figcaption>
+          </figure>
+          <figure>
+            <img src="img/6-pfSense-Interface-Assignment.png" alt="Console interface assignment summary confirming mapping of WAN to vtnet0, LAN to vtnet1, OPT1 to vtnet2, and OPT2 to vtnet3." loading="lazy">
+            <figcaption>
+              (Console interface assignment summary confirming mapping of WAN to
+              vtnet0, LAN to vtnet1, OPT1 to vtnet2, and OPT2 to vtnet3.)
+            </figcaption>
+          </figure>
+          <p>
+            Using console Option <code>2</code>, I set static gateway IP
+            addresses (<code>.1</code>) and DHCP pool ranges for each internal
+            interface. One thing I would have done differently in a real
+            environment is to increase the DHCP pool for the USERS subnet, and
+            shrink it and prioritize using static assignments for the MANAGEMENT
+            and SERVERS subnets.
+          </p>
+          <ol>
+            <li>
+              <strong>MANAGEMENT (<code>vtnet1</code>)</strong>: IP
+              <code>10.10.10.1/24</code> | DHCP Scope:
+              <code>10.10.10.100</code> – <code>10.10.10.199</code>
+              <figure>
+                <img src="img/7-pfSense-Configured-vtnet1.png" alt="Console output confirming LAN interface configuration at 10.10.10.1/24 with active webConfigurator URL." loading="lazy">
+                <figcaption>
+                  (Console output confirming LAN interface configuration at
+                  10.10.10.1/24 with active webConfigurator URL.)
+                </figcaption>
+              </figure>
+            </li>
+            <li>
+              <strong>SERVERS (<code>vtnet2</code>)</strong>: IP
+              <code>10.20.20.1/24</code> | DHCP Scope:
+              <code>10.20.20.100</code> – <code>10.20.20.199</code>
+              <figure>
+                <img src="img/8-pfSense-Configured-vtnet2.png" alt="Console output confirming OPT1 interface configuration at 10.20.20.1/24 and DHCP pool creation." loading="lazy">
+                <figcaption>
+                  (Console output confirming OPT1 interface configuration at
+                  10.20.20.1/24 and DHCP pool creation.)
+                </figcaption>
+              </figure>
+            </li>
+            <li>
+              <strong>USERS (<code>vtnet3</code>)</strong>: IP
+              <code>10.30.30.1/24</code> | DHCP Scope:
+              <code>10.30.30.100</code> – <code>10.30.30.199</code>
+              <figure>
+                <img src="img/9-pfSense-Configured-vtnet3.png" alt="Console output confirming OPT2 interface configuration at 10.30.30.1/24 and DHCP scope settings." loading="lazy">
+                <figcaption>
+                  (Console output confirming OPT2 interface configuration at
+                  10.30.30.1/24 and DHCP scope settings.)
+                </figcaption>
+              </figure>
+              <figure>
+                <img src="img/10-pfSense-Configured-Confirmation.png" alt="pfSense main menu confirming active statuses and IP addresses for WAN, LAN, OPT1, and OPT2 interfaces." loading="lazy">
+                <figcaption>
+                  (pfSense main menu confirming active statuses and IP addresses
+                  for WAN, LAN, OPT1, and OPT2 interfaces.)
+                </figcaption>
+              </figure>
+            </li>
+          </ol>
+
+          <h3 id="web-gui-config">web gui configuration &amp; interface customization</h3>
+          <p>
+            From the Debian Jump Box on the Management subnet, I accessed the
+            WebGUI at <code>https://10.10.10.1</code>. (For setup and joining of
+            the Debian host, see
+            <a href="#linux-jump-box">linux jump box deployment &amp; domain join</a>)
+          </p>
+          <figure>
+            <img src="img/13-Jumpbox-pfSense-Login.png" alt="Firefox browser on Debian Jump Box connecting to pfSense webConfigurator portal at https://10.10.10.1." loading="lazy">
+            <figcaption>
+              (Firefox browser on Debian Jump Box connecting to pfSense
+              webConfigurator portal at https://10.10.10.1.)
+            </figcaption>
+          </figure>
+          <p>
+            In pfSense under <code>System &gt; General Setup</code>, I
+            configured System Information parameters
+            (<code>LBS-PFS-01.labrador.corp</code>, and set external DNS servers
+            <code>1.1.1.1</code> (CloudFlare) and <code>8.8.8.8</code>
+            (Google)).
+          </p>
+          <figure>
+            <img src="img/14-Jumpbox-pfSense-Sysinfo.png" alt="pfSense WebGUI dashboard displaying System Information widget with hostname LBS-PFS-01.labrador.corp." loading="lazy">
+            <figcaption>
+              (pfSense WebGUI dashboard displaying System Information widget
+              with hostname LBS-PFS-01.labrador.corp.)
+            </figcaption>
+          </figure>
+          <p>
+            Under <code>Interfaces</code>, I renamed the default interface
+            labels to match our lab naming schema. <code>WAN</code> was already
+            doing the right thing, so they stayed the same.
+          </p>
+          <ul>
+            <li>
+              <code>LAN</code> -&gt; <code>MANAGEMENT</code>
+              (<code>10.10.10.1/24</code>)
+            </li>
+            <li>
+              <code>OPT1</code> -&gt; <code>SERVERS</code>
+              (<code>10.20.20.1/24</code>)
+            </li>
+            <li>
+              <code>OPT2</code> -&gt; <code>USERS</code>
+              (<code>10.30.30.1/24</code>)
+            </li>
+          </ul>
+          <figure>
+            <img src="img/15-Jumpbox-pfSense-Interfaces.png" alt="pfSense WebGUI Interfaces menu showing default interface names WAN, LAN, OPT1, and OPT2." loading="lazy">
+            <figcaption>
+              (pfSense WebGUI Interfaces menu showing default interface names
+              WAN, LAN, OPT1, and OPT2.)
+            </figcaption>
+          </figure>
+          <figure>
+            <img src="img/16-Jumpbox-pfSense-Interfaces-Renamed.png" alt="pfSense WebGUI Interfaces menu reflecting updated labels: WAN, MANAGEMENT, SERVERS, and USERS." loading="lazy">
+            <figcaption>
+              (pfSense WebGUI Interfaces menu reflecting updated labels: WAN,
+              MANAGEMENT, SERVERS, and USERS.)
+            </figcaption>
+          </figure>
+          <p>
+            NOTE: For most of this lab, barring instances where a network
+            connection was necessary (such as installing needed packages on
+            Debian to join it to our AD DC) the WAN interface was disabled in
+            pfSense. This was out of an abundance of precaution, and the
+            volatile nature of a homelab that is not fully configured or
+            hardened against internet threats. The majority of network traffic
+            and subsequent troubleshooting occurred internally passing through
+            the pfSense firewall between the various VLANs/subnets configured
+            here, though as I will cover later even disabling the WAN brought
+            unexpected issues.
+          </p>
+
+          <h3 id="firewall-rules-users">firewall rules for USERS interface</h3>
+          <p>
+            In a modern production environment that aligns with zero trust
+            architecture and defense-in-depth principles, multiple redundant
+            controls would need to be implemented outside of a single stateful
+            firewall. Due to the scope of this lab focusing on initial design
+            and Active Directory, as well as my unfamiliarity with pfSense, I
+            used this opportunity to configure basic inter-subnet security rules
+            to prevent end-users from probing or interacting with the MANAGEMENT
+            and SERVERS subnets while creating an exception for required AD
+            services under <code>Firewall &gt; Rules &gt; USERS</code>.
+          </p>
+          <ol>
+            <li>
+              <strong>Allow DC Access</strong>: <code>PASS</code> | Source:
+              <code>USERS subnets</code> | Destination:
+              <code>10.20.20.10</code> (<code>LBS-DC-01</code>) | Description:
+              <code>User allow DC</code> (Permits Kerberos, DNS, LDAP, SMB
+              authentication).
+            </li>
+            <li>
+              <strong>Block Server Access</strong>: <code>BLOCK</code> | Source:
+              <code>USERS subnets</code> | Destination:
+              <code>SERVERS subnets</code> | Description:
+              <code>User block Servers</code> (Prevents lateral scanning to
+              non-DC servers).
+            </li>
+            <li>
+              <strong>Block Management Access</strong>: <code>BLOCK</code> |
+              Source: <code>USERS subnets</code> | Destination:
+              <code>MANAGEMENT subnets</code> | Description:
+              <code>User block Management</code> (Blocks client access to Jump
+              Box and pfSense WebGUI).
+            </li>
+            <li>
+              <strong>Allow Outbound Egress</strong>: <code>PASS</code> |
+              Source: <code>USERS subnets</code> | Destination:
+              <code>*</code> | Description:
+              <code>User allow Other/WAN</code> (Permits standard outbound
+              traffic when WAN is active).
+            </li>
+          </ol>
+          <figure>
+            <img src="img/17-Jumpbox-pfSense-User-Firewall.png" alt="pfSense USERS interface firewall rule table showing ordered rules allowing DC access, blocking Server and Management subnets, and allowing egress." loading="lazy">
+            <figcaption>
+              (pfSense USERS interface firewall rule table showing ordered rules
+              allowing DC access, blocking Server and Management subnets, and
+              allowing egress.)
+            </figcaption>
+          </figure>
+        </section>
+
+        <hr>
+
+        <section id="section-3">
+          <h2>3. Active Directory &amp; Identity and Access Management</h2>
+          <p>
+            The IAM infrastructure of the homelab is centered on a Windows
+            Server 2022 Domain Controller (<code>LBS-DC-01</code>) which
+            provides centralized authentication, directory services, and
+            internal DNS resolution.
+          </p>
+
+          <h3 id="deploying-winserv">deploying windows server 2022 (<code>LBS-DC-01</code>)</h3>
+          <p>
+            I spun up the primary Domain Controller <code>LBS-DC-01</code>
+            (<code>VM ID 201</code>) in Proxmox with 2 vCPUs
+            (<code>host passthrough</code>), 4 GB of RAM, a <code>q35</code>
+            machine type, OVMF (UEFI) BIOS, TPM 2.0 state file, a 60 GB VirtIO
+            SCSI disk, and attached it to <code>vmbr2</code>
+            (<code>LBS-SRV-NET</code>).
+          </p>
+          <p>
+            Because Windows doesn't ship with native KVM drivers, I loaded the
+            Red Hat VirtIO SCSI passthrough controller driver
+            (<code>vioscsi.inf</code>) from the mounted
+            <code>virtio-win-0.1.285.iso</code> to complete the VM installation.
+          </p>
+          <figure>
+            <img src="img/18-Winserv2022-virtio-Select.png" alt="Windows Server 2022 installer loading Red Hat VirtIO SCSI pass-through controller driver from VirtIO ISO." loading="lazy">
+            <figcaption>
+              (Windows Server 2022 installer loading Red Hat VirtIO SCSI
+              pass-through controller driver from VirtIO ISO.)
+            </figcaption>
+          </figure>
+          <p>
+            Once that was finished I installed
+            <code>virtio-win-gt-x64.msi</code> to deploy VirtIO guest agent
+            tools and driver services.
+          </p>
+
+          <h3 id="static-ip-verification">static ip assignment &amp; connectivity verification</h3>
+          <p>
+            Using <code>ncpa.cpl</code> on <code>LBS-DC-01</code>, I set static
+            IPv4 configuration:
+          </p>
+          <ul>
+            <li>IP Address: <code>10.20.20.10</code></li>
+            <li>Subnet Mask: <code>255.255.255.0</code></li>
+            <li>
+              Default Gateway: <code>10.20.20.1</code> (pfSense
+              <code>SERVERS</code> gateway)
+            </li>
+            <li>
+              Preferred DNS: <code>10.20.20.1</code> (temporary bootstrap) /
+              <code>127.0.0.1/localhost</code> (post-promotion)
+            </li>
+          </ul>
+          <figure>
+            <img src="img/19-Winserv2022-Static-IP.png" alt="Windows TCP/IPv4 properties dialog assigning static IP 10.20.20.10, mask 255.255.255.0, gateway 10.20.20.1, and DNS 10.20.20.1." loading="lazy">
+            <figcaption>
+              (Windows TCP/IPv4 properties dialog assigning static IP
+              10.20.20.10, mask 255.255.255.0, gateway 10.20.20.1, and DNS
+              10.20.20.1.)
+            </figcaption>
+          </figure>
+          <p>
+            I verified Layer 3 gateway routing by pinging google.com to check
+            external DNS:
+          </p>
+          <figure>
+            <img src="img/20-Winserv2022-Ping.png" alt="Command Prompt on LBS-DC-01 confirming active outbound network routing via successful ping to google.com." loading="lazy">
+            <figcaption>
+              (Command Prompt on LBS-DC-01 confirming active outbound network
+              routing via successful ping to google.com.)
+            </figcaption>
+          </figure>
+
+          <h3 id="adds-forest-promotion">AD DS forest promotion &amp; dns self resolution</h3>
+          <p>
+            In the Server Manager I installed the Active Directory Domain
+            Services and DNS Server roles, then promoted the server to a Domain
+            Controller:
+          </p>
+          <ul>
+            <li>Deployment Operation: Add a new forest</li>
+            <li>Root Domain Name: <code>labrador.corp</code></li>
+            <li>Domain NetBIOS Name: <code>LABRADOR</code></li>
+            <li>Forest/Domain Functional Level: Windows Server 2016</li>
+          </ul>
+          <figure>
+            <img src="img/21-Winserv2022-Forest-Creation.png" alt="Active Directory Domain Services Configuration Wizard creating a new forest for root domain labrador.corp." loading="lazy">
+            <figcaption>
+              (Active Directory Domain Services Configuration Wizard creating a
+              new forest for root domain labrador.corp.)
+            </figcaption>
+          </figure>
+          <p>
+            After promotion and rebooting the VM, the Windows logon screen
+            confirmed domain authority (<code>LABRADOR\Administrator</code>).
+          </p>
+          <figure>
+            <img src="img/22-Winserv2022-DC-Logon.png" alt="Windows Server 2022 logon screen displaying domain logon prompt for LABRADOR\Administrator." loading="lazy">
+            <figcaption>
+              (Windows Server 2022 logon screen displaying domain logon prompt
+              for LABRADOR\Administrator.)
+            </figcaption>
+          </figure>
+          <p>
+            I verified local DNS self resolution using <code>nslookup</code> on
+            the local domain, and everything checked out.
+          </p>
+          <figure>
+            <img src="img/23-Winserv2022-nslookup.png" alt="Command Prompt executing nslookup labrador.corp verifying domain name self-resolution to local IP 10.20.20.10." loading="lazy">
+            <figcaption>
+              (Command Prompt executing nslookup labrador.corp verifying domain
+              name self-resolution to local IP 10.20.20.10.)
+            </figcaption>
+          </figure>
+
+          <h3 id="aduc-ou-hierarchy">ADUC organizational unit hierarchy &amp; user provisioning</h3>
+          <p>
+            In Server Manager under <code>Tools</code>, I opened Active
+            Directory Users and Computers (ADUC) (<code>dsa.msc</code>).
+          </p>
+          <figure>
+            <img src="img/24-Winserv2022-ADUC.png" alt="Server Manager Tools menu opening Active Directory Users and Computers console." loading="lazy">
+            <figcaption>
+              (Server Manager Tools menu opening Active Directory Users and
+              Computers console.)
+            </figcaption>
+          </figure>
+          <p>
+            To maintain a clean directory structure, I created a root
+            Organizational Unit named <code>LBS</code> directly under
+            <code>labrador.corp</code>.
+          </p>
+          <figure>
+            <img src="img/25-Winserv2022-Root-OU.png" alt="ADUC context menu creating top-level Organizational Unit named LBS." loading="lazy">
+            <figcaption>
+              (ADUC context menu creating top-level Organizational Unit named
+              LBS.)
+            </figcaption>
+          </figure>
+          <p>
+            Under the <code>LBS</code> root OU, I created child OUs to keep
+            domain assets and users organized.
+          </p>
+          <ul>
+            <li>
+              <code>_Admins</code>: Dedicated administrative user accounts.
+            </li>
+            <li>
+              <code>Servers</code>: Server computer objects
+              (<code>LBS-DC-01</code>).
+            </li>
+            <li>
+              <code>Workstations</code>: Client endpoint objects
+              (<code>LBS-USR-01</code>).
+            </li>
+            <li>
+              <code>Users</code>: Standard non-administrative user accounts
+              (<code>cynthia.guzman</code>).
+            </li>
+            <li><code>Service_Accounts</code>: Service accounts.</li>
+          </ul>
+          <p>
+            I provisioned an administrative and standard user account to
+            validate privilege separation:
+          </p>
+          <ol>
+            <li>
+              <strong>Domain Admin Account</strong> (<code>_Admins</code> OU):
+              <ul>
+                <li>
+                  Full Name: Barry Unger | UPN:
+                  <code>adm-barry.unger@labrador.corp</code>
+                </li>
+                <li>
+                  Group Memberships: <code>Domain Admins</code>,
+                  <code>Enterprise Admins</code>, <code>Schema Admins</code>.
+                </li>
+              </ul>
+            </li>
+            <li>
+              <strong>Standard End-User Account</strong> (<code>Users</code>
+              OU):
+              <ul>
+                <li>
+                  Full Name: Cynthia Guzman | UPN:
+                  <code>cynthia.guzman@labrador.corp</code>
+                </li>
+                <li>Group Memberships: <code>Domain Users</code>.</li>
+              </ul>
+            </li>
+          </ol>
+          <figure>
+            <img src="img/26-Winserv2022-Admin-Roles.png" alt="ADUC user properties window assigning adm-barry.unger memberships in Domain Admins, Enterprise Admins, and Schema Admins." loading="lazy">
+            <figcaption>
+              (ADUC user properties window assigning adm-barry.unger memberships
+              in Domain Admins, Enterprise Admins, and Schema Admins.)
+            </figcaption>
+          </figure>
+          <figure>
+            <img src="img/27-Barry-Unger-Technology-Director.png" alt="That's the face of a technology director you can trust!" loading="lazy">
+            <figcaption>
+              (That's the face of a technology director you can trust!)
+            </figcaption>
+          </figure>
+        </section>
+
+        <hr>
+
+        <section id="section-4">
+          <h2>4. Endpoints &amp; Domain Integration</h2>
+          <p>
+            To test domain management across different operating systems, I
+            deployed a Linux jump box on VLAN 10 and a Windows 11 Enterprise
+            workstation on VLAN 30, joining both to <code>labrador.corp</code>.
+            I then provisioned 2 more Windows 11 workstations via VM cloning
+            followed by manual configuration in Proxmox.
+          </p>
+
+          <h3 id="linux-jump-box">linux jump box deployment &amp; domain join (<code>LBS-JMP-01</code>)</h3>
+          <p>
+            I created <code>LBS-JMP-01</code> (<code>VM ID 110</code>) in
+            Proxmox with 2 vCPUs (<code>host passthrough</code>), 1 GB RAM, OVMF
+            (UEFI) BIOS, a 20 GB VirtIO disk, attached to <code>vmbr1</code>
+            (<code>LBS-MGMT-NET</code>), and installed Debian 13. The design
+            philosophy behind using a jump box was to serve as a secure gateway
+            between end-users and critical infrastructure. By requiring a
+            dedicated admin workstation to access the pfSense web GUI, neither
+            regular employees nor potential threat actors would be able to
+            access the management interface (without first breaching the secured
+            jump box that is).
+          </p>
+          <figure>
+            <img src="img/28-Proxmox-Debian-VM.png" alt="Proxmox VM creation wizard setting up Debian Jump Box LBS-JMP-01 with 1GB RAM, 2 cores, UEFI BIOS, and vmbr1 binding." loading="lazy">
+            <figcaption>
+              (Proxmox VM creation wizard setting up Debian Jump Box LBS-JMP-01
+              with 1GB RAM, 2 cores, UEFI BIOS, and vmbr1 binding.)
+            </figcaption>
+          </figure>
+          <p>
+            Upon booting, interface <code>ens18</code> acquired IP
+            <code>10.10.10.100</code> via pfSense DHCP.
+          </p>
+          <figure>
+            <img src="img/29-Debian-DHCP.png" alt="Terminal window on LBS-JMP-01 running 'ip a' confirming dynamic DHCP lease 10.10.10.100/24 on interface ens18." loading="lazy">
+            <figcaption>
+              (Terminal window on LBS-JMP-01 running 'ip a' confirming dynamic
+              DHCP lease 10.10.10.100/24 on interface ens18.)
+            </figcaption>
+          </figure>
+          <p>
+            After resolving inter-subnet gateway and DNS settings (detailed in
+            <a href="#section-5">Section 5</a>), I installed domain join
+            dependencies required to allow Debian to join AD.
+          </p>
+          <pre class="code-block"><code>sudo apt update &amp;&amp; sudo apt install -y realmd sssd sssd-tools libnss-sss libpam-sss adcli samba-common-bin oddjob oddjob-mkhomedir packagekit</code></pre>
+          <p>
+            I ran realm discovery to locate the Active Directory domain:
+          </p>
+          <figure>
+            <img src="img/30-Debian-Discover-AD-Realm.png" alt="Terminal output on LBS-JMP-01 executing realm discover labrador.corp returning Active Directory Kerberos domain information." loading="lazy">
+            <figcaption>
+              (Terminal output on LBS-JMP-01 executing realm discover
+              labrador.corp returning Active Directory Kerberos domain
+              information.)
+            </figcaption>
+          </figure>
+          <p>
+            I joined Debian to <code>labrador.corp</code> using
+            <code>adm-barry.unger</code> credentials, configured PAM automatic
+            home directory creation (<code>pam_mkhomedir</code>), and verified
+            domain login via <code>su</code>:
+          </p>
+          <figure>
+            <img src="img/31-Debian-Joined-Su.png" alt="Terminal session on LBS-JMP-01 confirming successful realm join, PAM directory creation, and su login as adm-barry.unger@labrador.corp." loading="lazy">
+            <figcaption>
+              (Terminal session on LBS-JMP-01 confirming successful realm join,
+              PAM directory creation, and su login as
+              adm-barry.unger@labrador.corp.)
+            </figcaption>
+          </figure>
+          <p>
+            In ADUC on <code>LBS-DC-01</code>, I verified that
+            <code>LBS-JMP-01</code> registered as an active domain computer
+            object, then moved it to <code>LBS &gt; Management</code>.
+          </p>
+          <figure>
+            <img src="img/32-Winserv2022-Debian-OU.png" alt="ADUC console on LBS-DC-01 displaying LBS-JMP-01 computer object registered in the LBS Organizational Unit." loading="lazy">
+            <figcaption>
+              (ADUC console on LBS-DC-01 displaying LBS-JMP-01 computer object
+              registered in the LBS Organizational Unit.)
+            </figcaption>
+          </figure>
+
+          <h3 id="win11-deployment">windows 11 enterprise workstation deployment (<code>LBS-USR-01</code>)</h3>
+          <p>
+            I provisioned <code>LBS-USR-01</code> (<code>VM ID 301</code>) on
+            <code>vmbr3</code> (<code>LBS-USR-NET</code>) with 4 vCPUs
+            (<code>host passthrough</code>), 4 GB RAM, OVMF (UEFI) BIOS, vTPM
+            2.0, and a 64 GB VirtIO SCSI disk.
+          </p>
+          <p>
+            Windows 11 has a <em>fantastic</em> "Out of the Box Experience"
+            (OOBE), which is rather annoying for homelab purposes (I'd rather
+            not create a bunch of Microsoft accounts I have no intention on
+            using). Thankfully we are able to bypass network account enforcement
+            by opening a command prompt (<code>Shift + F10</code>), executing
+            <code>OOBE\BYPASSNRO</code>, and creating a local administrator
+            account (<code>LocalAdmin</code>). Post-boot, I installed VirtIO
+            guest tools (<code>virtio-win-guest-tools.exe</code>).
+          </p>
+          <p>
+            <code>LBS-USR-01</code> received dynamic IP
+            <code>10.30.30.100</code> from pfSense DHCP with DNS automatically
+            set to <code>10.20.20.10</code>. In System Properties
+            (<code>sysdm.cpl</code>), I renamed the computer
+            <code>LBS-USR-01</code> and joined domain
+            <code>labrador.corp</code>.
+          </p>
+          <figure>
+            <img src="img/33-Win11-Add-Domain.png" alt="Windows 11 System Properties Computer Name/Domain Changes dialog joining LBS-USR-01 to domain labrador.corp." loading="lazy">
+            <figcaption>
+              (Windows 11 System Properties Computer Name/Domain Changes dialog
+              joining LBS-USR-01 to domain labrador.corp.)
+            </figcaption>
+          </figure>
+          <figure>
+            <img src="img/34-Win11-Added-Domain.png" alt="Windows 11 domain join success dialog displaying 'Welcome to the labrador.corp domain.'" loading="lazy">
+            <figcaption>
+              (Windows 11 domain join success dialog displaying 'Welcome to the
+              labrador.corp domain.')
+            </figcaption>
+          </figure>
+
+          <h3 id="privilege-separation">privilege separation verification</h3>
+          <p>
+            To make sure that Domain Users were not able to immediately go buck
+            wild on their workstation's settings, I tested logging in to
+            <code>LBS-USR-01</code> as both a standard user and an
+            administrator.
+          </p>
+          <ul>
+            <li>
+              Logging in as standard user
+              <code>cynthia.guzman@labrador.corp</code>, administrative actions
+              (such as opening Device Manager or changing system settings)
+              triggered a User Account Control (UAC) prompt requiring admin
+              credentials. In this way, an administrator can still authorize
+              changes without logging out the current user.
+            </li>
+            <li>
+              Logging in as <code>adm-barry.unger@labrador.corp</code>, the
+              account executed administrative actions with full elevation.
+            </li>
+          </ul>
+          <p>
+            While this initial privilege confirmation was sufficient for now, in
+            a real environment we would likely want to harden our default
+            workstation policies to align with a framework such as
+            <a href="https://www.cisecurity.org/cis-benchmarks" target="_blank" rel="noopener noreferrer">CIS Benchmark</a>
+            and additional industry specific controls required by frameworks
+            such as HIPAA, PCI-DSS or NERC CIP.
+          </p>
+        </section>
+
+        <hr>
+
+        <section id="section-5">
+          <h2>5. Key Troubleshooting Scenarios &amp; Lessons Learned</h2>
+          <p>
+            During the build, I ran into two inter-subnet routing errors that
+            required a bit of digging in order to get running properly.
+          </p>
+
+          <h3 id="scenario-1">scenario 1: linux jump box gateway loss &amp; DNS resolver flapping</h3>
+          <p>
+            <strong>The issue:</strong> As soon as I cut the WAN interface on
+            pfSense, my Debian Jump Box (<code>LBS-JMP-01</code>) lost its
+            default gateway routing entry (<code>10.10.10.1</code>) and
+            <code>NetworkManager</code> overwrote
+            <code>/etc/resolv.conf</code>, dropping local domain resolution. Now
+            I couldn't reach <em>anything</em> from my jump box, which would
+            make it a useless hunk of metal if it wasn't a software based
+            emulation of a computer.
+          </p>
+          <figure>
+            <img src="img/35-Debian-No-Ping-DC.png" alt="Terminal output on LBS-JMP-01 illustrating name resolution failure and 'Network is unreachable' error when attempting to reach LBS-DC-01." loading="lazy">
+            <figcaption>
+              (Terminal output on LBS-JMP-01 illustrating name resolution
+              failure and 'Network is unreachable' error when attempting to
+              reach LBS-DC-01.)
+            </figcaption>
+          </figure>
+          <p>
+            <strong>What caused it?</strong> <code>NetworkManager</code> dynamic
+            lease renewals stripped the default route entries when the upstream
+            WAN interface state change occurred.
+          </p>
+          <p><strong>The fix:</strong></p>
+          <ol>
+            <li>
+              I checked <code>/etc/resolv.conf</code> and verified that yes, my
+              default route had disappeared.
+            </li>
+            <li>
+              I manually restored the static default gateway in Debian:
+              <code>sudo ip route add default via 10.10.10.1</code>.
+            </li>
+            <li>
+              I configured <code>/etc/resolv.conf</code> with
+              <code>nameserver 10.20.20.10</code> and applied the Linux
+              immutable attribute (<code>chattr +i</code>) to make sure no
+              troublesome daemons would mess with my network settings:
+            </li>
+          </ol>
+          <pre class="code-block"><code># Add default route and lock DNS resolver configuration
+sudo ip route add default via 10.10.10.1
+sudo sh -c 'echo "nameserver 10.20.20.10" &gt; /etc/resolv.conf'
+sudo chattr +i /etc/resolv.conf
+
+# Verify connectivity to Domain Controller
+lbs-admin@LBS-JMP-01:~$ ping 10.20.20.10 -c 4
+PING 10.20.20.10 (10.20.20.10) 56(84) bytes of data.
+64 bytes from 10.20.20.10: icmp_seq=1 ttl=127 time=0.705 ms</code></pre>
+          <figure>
+            <img src="img/36-Debian-Gateway-Fix.png" alt="Terminal output on LBS-JMP-01 showing missing route fix via ip route add default via 10.10.10.1 and successful ping response from 10.20.20.10." loading="lazy">
+            <figcaption>
+              (Terminal output on LBS-JMP-01 showing missing route fix via ip
+              route add default via 10.10.10.1 and successful ping response from
+              10.20.20.10.)
+            </figcaption>
+          </figure>
+
+          <h3 id="scenario-2">scenario 2: inter-subnet ICMP &amp; DNS timeout drops by windows defender firewall</h3>
+          <p>
+            <strong>The issue:</strong> Although pfSense firewall rules
+            permitted traffic between Management (<code>10.10.10.0/24</code>)
+            and Server (<code>10.20.20.0/24</code>) subnets,
+            <code>LBS-JMP-01</code> could not query DNS (<code>UDP 53</code>) or
+            ping <code>LBS-DC-01</code> (<code>10.20.20.10</code>).
+          </p>
+          <p>
+            <strong>What caused it?</strong> After some Googling, I found that
+            the built in Defender Firewall on Windows Server 2022 restricts
+            inbound DNS and ICMP Echo packets to the local subnet
+            (<code>10.20.20.0/24</code>), meaning the packets originating from
+            my management subnet (<code>10.10.10.0/24</code>) were being
+            dropped.
+          </p>
+          <p>
+            <strong>The fix:</strong> On <code>LBS-DC-01</code>, I opened
+            Windows Defender Firewall (<code>wf.msc</code>), and under Inbound
+            Rules for <code>DNS (UDP-In)/(TCP-In)</code> and
+            <code>File and Printer Sharing (Echo Request - ICMPv4-In)</code>, I
+            edited the Properties &gt; Scope tab, changing Remote IP Address
+            settings from "Local subnet" to Any IP address.
+          </p>
+          <figure>
+            <img src="img/37-Winserv2022-Inbound-DNS-Rule.png" alt="Windows Defender Firewall Advanced Security console on LBS-DC-01 adjusting Inbound Scope for DNS (UDP-In) to allow remote subnet traffic." loading="lazy">
+            <figcaption>
+              (Windows Defender Firewall Advanced Security console on LBS-DC-01
+              adjusting Inbound Scope for DNS (UDP-In) to allow remote subnet
+              traffic.)
+            </figcaption>
+          </figure>
+
+          <h3 id="key-takeaways">key takeaways</h3>
+          <p>
+            My initial intention with this lab was to get some exposure to
+            Active Directory, but it ended up teaching me much more about
+            network design and troubleshooting than I initially expected. I
+            tried to keep the design philosophy aligned with modern enterprise
+            networks, though of course many things are still missing (MDM,
+            automatic workstation provisioning, wireless access points,
+            enterprise network management, VPN, advanced security appliances
+            such as EDR, IDS/IPS, SIEM, cloud gateway integration, etc.) I now
+            have a solid, segmented starting point to test deployment of all of
+            these things in the future.
+          </p>
+          <p>
+            During initial planning for this lab it was daunting to manage scope
+            creep. I would be configuring something in pfSense and think "Oh,
+            wouldn't it be cool if I set up automated endpoint provisioning? Or
+            configured an ELK stack and created Powershell scripts to generate
+            network telemetry?" Yes, it would be very cool, and nothing is
+            stopping me from implementing those things now. But remaining
+            focused on the task at hand, creating a segmented network and
+            setting up Active Directory was the base I needed to build first in
+            order to do all those other neat things.
+          </p>
+          <p>
+            One thing that stood out to me having managed Google Workspace for
+            over two years is how intuitive Active Directory's identity and
+            access management workflow is. I expected the transition to require
+            a lot more research than it did - the main hurdle was locating ADUC.
+            Organizational Unit design, governing user access and enforcing
+            Group Policies aligned incredibly close to cloud-based IAM
+            solutions.
+          </p>
+          <p>
+            Thank you for reading my writeup! If you have any questions feel
+            free to reach out via the contact button below, or connect with me on
+            LinkedIn and shoot me a message there.
+          </p>
+
+          <h3 id="resources">resources</h3>
+          <ul>
+            <li>
+              <a href="https://www.debian.org/distrib/netinst" target="_blank" rel="noopener noreferrer">Debian 13.4.0</a>
+            </li>
+            <li>
+              <a href="https://www.pfsense.org/download/" target="_blank" rel="noopener noreferrer">pfSense 2.8.1</a>
+            </li>
+            <li>
+              <a href="https://www.proxmox.com/en/downloads" target="_blank" rel="noopener noreferrer">Proxmox VE 9.1</a>
+            </li>
+            <li>
+              <a href="https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/?C=M;O=D" target="_blank" rel="noopener noreferrer">VirtIO-win 0.1.285</a>
+            </li>
+            <li>
+              <a href="https://www.microsoft.com/en-us/evalcenter/evaluate-windows-11-enterprise" target="_blank" rel="noopener noreferrer">Windows 11 Evaluation</a>
+            </li>
+            <li>
+              <a href="https://www.microsoft.com/en-us/evalcenter/evaluate-windows-server-2022" target="_blank" rel="noopener noreferrer">Windows Server 2022 Evaluation</a>
+            </li>
+          </ul>
+        </section>
+      </main>
+
+      <footer>
+        <div class="prompt-footer">
+          <span class="user">vince</span><span class="at">@</span
+          ><span class="host">holguin.sh</span>:<span class="path"
+            >~/projects/ad-homelab</span
+          >$ <a class="command-link" href="mailto:vince@holguin.sh">contact</a>
+          <a class="command-link" href="https://linkedin.com/in/vholguin-sd"
+          target="_blank" rel="noopener noreferrer">linkedin</a><span class="cursor"></span>
+        </div>
+        <div class="meta-bar">
+          <span>holguin.sh (&#x2184;) 2026</span>
+          <a href="https://github.com/vholguin-wav/holguin.sh" target="_blank"
+            rel="noopener noreferrer">[source]</a>
+        </div>
+      </footer>
+    </div>
+  </body>
+</html>
