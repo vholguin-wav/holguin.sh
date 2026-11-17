@@ -352,3 +352,28 @@ th {
   color: var(--accent);
   font-weight: 700;
 }
+
+/* AbuseIPDB Badge Style */
+.badge-container {
+  margin-top: 1.5rem;
+  text-align: center;
+}
+
+.badge-container a {
+  border: 1px solid var(--muted);
+  display: inline-block;
+  opacity: .85;
+  padding: 4px;
+  transition: border-color .2s ease, opacity .2s ease;
+}
+
+.badge-container a:hover {
+  border-color: var(--text);
+  opacity: 1;
+}
+
+.badge-container img {
+  display: block;
+  height: auto;
+  width: 201px;
+}
